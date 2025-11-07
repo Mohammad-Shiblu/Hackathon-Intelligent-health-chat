@@ -18,10 +18,6 @@ st.set_page_config(
 # Initialize session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
-if "document_context" not in st.session_state:
-    st.session_state.document_context = ""
-if "last_uploaded_file" not in st.session_state:
-    st.session_state.last_uploaded_file = None
 
 # Initialize modules
 @st.cache_resource
@@ -37,169 +33,186 @@ def get_chat_handler():
 analyzer = get_analyzer()
 chat_handler = get_chat_handler()
 
-
-def process_uploaded_file(uploaded_file):
-    """
-    Process uploaded medical document (image or PDF).
+# Custom CSS for ChatGPT-like UI
+st.markdown("""
+<style>
+    /* Hide Streamlit branding */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
     
-    Args:
-        uploaded_file: Streamlit uploaded file object
-        
-    Returns:
-        Analysis results dictionary
-    """
-    file_type = uploaded_file.type
+    /* Fixed input at bottom */
+    .stChatFloatingInputContainer {
+        position: fixed;
+        bottom: 0;
+        background-color: white;
+        padding: 1rem;
+        border-top: 1px solid #e0e0e0;
+    }
     
-    # Handle PDF files
-    if file_type == 'application/pdf':
-        with st.spinner("📄 Extracting PDF text..."):
-            pdf_reader = PdfReader(uploaded_file)
-            text_content = ""
-            for page in pdf_reader.pages:
-                text_content += page.extract_text() + "\n"
-            
-            # Analyze PDF text content
-            response = chat_handler.get_response(
-                user_message=f"Analyze this medical document and categorize it (prescription, lab report, or medical document). Then explain the key findings in simple terms:\n\n{text_content[:4000]}"
-            )
-            
-            return {
-                'category': 'pdf_document',
-                'category_display': 'PDF Document',
-                'explanation': response
-            }
+    /* Compact header */
+    .main-header {
+        padding: 1rem 0;
+        border-bottom: 1px solid #e0e0e0;
+        margin-bottom: 1rem;
+    }
     
-    # Handle image files
-    else:
-        image_data = uploaded_file.read()
-        media_type_map = {
-            'image/jpeg': 'image/jpeg',
-            'image/jpg': 'image/jpeg',
-            'image/png': 'image/png',
-            'image/webp': 'image/webp'
-        }
-        media_type = media_type_map.get(file_type, 'image/jpeg')
-        
-        with st.spinner("🔍 Analyzing document..."):
-            result = analyzer.analyze_document(image_data, media_type)
-        
-        return result
+    /* Chat container */
+    .chat-container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding-bottom: 150px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
+# Compact header
+st.markdown('<div class="main-header">', unsafe_allow_html=True)
+col1, col2 = st.columns([1, 5])
+with col1:
+    st.markdown("🏥")
+with col2:
+    st.markdown("### AI Health Companion")
+st.markdown('</div>', unsafe_allow_html=True)
 
-# UI Layout
-st.title("🏥 AI Health Companion")
-st.caption("Your friendly assistant for understanding medical documents")
-
-# Sidebar for document upload
+# Sidebar
 with st.sidebar:
-    st.header("📤 Upload Medical Document")
-    st.markdown("Upload prescription, lab report, or medical image")
-    
-    uploaded_file = st.file_uploader(
-        "Choose a file",
-        type=['jpg', 'jpeg', 'png', 'webp', 'pdf'],
-        help="Supported: JPG, PNG, WEBP, PDF"
-    )
-    
-    if uploaded_file:
-        # Display preview based on file type
-        if uploaded_file.type == 'application/pdf':
-            st.success(f"📄 PDF: {uploaded_file.name}")
-        else:
-            image = Image.open(uploaded_file)
-            st.image(image, caption="Uploaded Document", use_column_width=True) # error corrected
-        
-        # Analyze button
-        if st.button("🔍 Analyze Document", type="primary", use_container_width=True):
-            # Check if this is a new file
-            file_id = f"{uploaded_file.name}_{uploaded_file.size}"
-            
-            if st.session_state.last_uploaded_file != file_id:
-                # New file - clear previous results
-                st.session_state.messages = []
-                st.session_state.document_context = ""
-                st.session_state.last_uploaded_file = file_id
-            
-            uploaded_file.seek(0)  # Reset file pointer
-            result = process_uploaded_file(uploaded_file)
-            
-            # Store context for chat
-            st.session_state.document_context = result['explanation']
-            
-            # Add to chat history
-            analysis_message = f"""**📋 Document Analysis**
-
-**Category:** {result['category_display'].replace('_', ' ').title()}
-
-**Explanation:**
-{result['explanation']}"""
-            
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": analysis_message
-            })
-            
-            st.success(f"✅ Identified as: {result['category_display'].replace('_', ' ').title()}")
-            st.rerun()
+    st.header("ℹ️ About")
+    st.markdown("""
+    **AI Health Companion** helps you understand medical documents using:
+    - 🤖 Claude 3 Sonnet AI
+    - 🔍 Amazon Textract OCR
+    - 📚 Medical Knowledge Base
+    """)
     
     st.markdown("---")
     
     # Clear chat button
     if st.button("🔄 New Conversation", use_container_width=True):
         st.session_state.messages = []
-        st.session_state.document_context = ""
-        st.session_state.last_uploaded_file = None
         st.rerun()
     
     st.markdown("---")
     st.info("""
     **💡 How to use:**
-    1. Upload medical document
-    2. Click 'Analyze Document'
-    3. Ask questions in chat
-    4. Get clear explanations
+    1. Attach a medical document
+    2. Type your question
+    3. Get instant analysis
+    
+    **Examples:**
+    - "Briefly explain this"
+    - "What are the key findings?"
+    - "Summarize the results"
+    - "Is anything abnormal?"
     """)
 
-# Main chat interface
-st.header("💬 Chat with Your Health Companion")
+# Welcome message if no chat history
+if not st.session_state.messages:
+    st.markdown("""
+    <div style="text-align: center; padding: 3rem 1rem; max-width: 600px; margin: 0 auto;">
+        <h2>👋 Welcome to AI Health Companion!</h2>
+        <p style="color: #666; margin: 1rem 0;">I can help you understand medical documents and answer health questions.</p>
+        <div style="text-align: left; margin-top: 2rem;">
+            <p><strong>I can help you:</strong></p>
+            <ul style="color: #666;">
+                <li>📄 Understand prescriptions and medications</li>
+                <li>🧪 Explain lab reports and test results</li>
+                <li>🩻 Interpret medical images</li>
+                <li>💊 Answer general health questions</li>
+            </ul>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 # Display chat history
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Chat input
-if prompt := st.chat_input("Ask about your health or medical documents..."):
-    # Add user message to chat
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    
-    with st.chat_message("user"):
-        st.markdown(prompt)
-    
-    # Generate AI response
-    with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            response = chat_handler.get_response(
-                user_message=prompt,
-                context=st.session_state.document_context
-            )
-            st.markdown(response)
-    
-    # Add assistant response to chat
-    st.session_state.messages.append({"role": "assistant", "content": response})
-    st.rerun()
+# Fixed bottom input area
+st.markdown("<div style='height: 100px;'></div>", unsafe_allow_html=True)
 
-# Welcome message if no chat history
-if not st.session_state.messages:
-    st.info("""
-    👋 **Welcome to AI Health Companion!**
+# File upload (compact)
+chat_uploaded_file = st.file_uploader(
+    "📎 Attach document",
+    type=['jpg', 'jpeg', 'png', 'webp', 'pdf'],
+    key="chat_file_uploader",
+    label_visibility="collapsed"
+)
+
+if chat_uploaded_file:
+    st.caption(f"✅ {chat_uploaded_file.name}")
+
+# Chat input using native Streamlit chat input
+if prompt := st.chat_input("💬 Ask about your health or medical documents..."):
+    # Check if file is attached
+    if chat_uploaded_file:
+        # Process the attached file
+        chat_uploaded_file.seek(0)
+        
+        # Add user message with file info
+        user_message = f"📎 **Attached:** {chat_uploaded_file.name}\n\n{prompt}"
+        st.session_state.messages.append({"role": "user", "content": user_message})
+        
+        with st.chat_message("user"):
+            st.markdown(user_message)
+        
+        # Process file based on type
+        with st.chat_message("assistant"):
+            with st.spinner("Analyzing document..."):
+                file_type = chat_uploaded_file.type
+                
+                if file_type == 'application/pdf':
+                    # Extract PDF text
+                    pdf_reader = PdfReader(chat_uploaded_file)
+                    text_content = ""
+                    for page in pdf_reader.pages:
+                        text_content += page.extract_text() + "\n"
+                    
+                    # Analyze with user's custom prompt
+                    response = chat_handler.get_response(
+                        user_message=f"{prompt}\n\nDocument content:\n{text_content[:4000]}"
+                    )
+                else:
+                    # Extract image data
+                    image_data = chat_uploaded_file.read()
+                    
+                    # Use Textract to extract text
+                    from textract_extractor import TextractExtractor
+                    textract = TextractExtractor()
+                    extracted = textract.extract_structured_data(image_data)
+                    
+                    # Build context
+                    context = f"Extracted text: {extracted['raw_text']}\n\n"
+                    if extracted['tables']:
+                        context += "Tables found:\n"
+                        for i, table in enumerate(extracted['tables'], 1):
+                            context += f"Table {i}: {table}\n"
+                    
+                    # Analyze with user's custom prompt
+                    response = chat_handler.get_response(
+                        user_message=f"{prompt}\n\n{context}"
+                    )
+                
+                st.markdown(response)
+        
+        st.session_state.messages.append({"role": "assistant", "content": response})
+        st.rerun()
     
-    I can help you:
-    - 📄 Understand prescriptions and medication instructions
-    - 🧪 Explain lab reports and test results
-    - 🩻 Interpret medical images and scans
-    - 💊 Answer general health questions
-    - 🤝 Provide friendly health guidance
-    
-    **Get started:** Upload a medical document or ask me a question!
-    """)
+    else:
+        # No file attached - regular chat
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                response = chat_handler.get_response(
+                    user_message=prompt
+                )
+                st.markdown(response)
+        
+        st.session_state.messages.append({"role": "assistant", "content": response})
+        st.rerun()
+
+
