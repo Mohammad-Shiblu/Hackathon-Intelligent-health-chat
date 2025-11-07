@@ -20,6 +20,8 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "document_context" not in st.session_state:
     st.session_state.document_context = ""
+if "last_uploaded_file" not in st.session_state:
+    st.session_state.last_uploaded_file = None
 
 # Initialize modules
 @st.cache_resource
@@ -109,6 +111,15 @@ with st.sidebar:
         
         # Analyze button
         if st.button("🔍 Analyze Document", type="primary", use_container_width=True):
+            # Check if this is a new file
+            file_id = f"{uploaded_file.name}_{uploaded_file.size}"
+            
+            if st.session_state.last_uploaded_file != file_id:
+                # New file - clear previous results
+                st.session_state.messages = []
+                st.session_state.document_context = ""
+                st.session_state.last_uploaded_file = file_id
+            
             uploaded_file.seek(0)  # Reset file pointer
             result = process_uploaded_file(uploaded_file)
             
@@ -137,6 +148,7 @@ with st.sidebar:
     if st.button("🔄 New Conversation", use_container_width=True):
         st.session_state.messages = []
         st.session_state.document_context = ""
+        st.session_state.last_uploaded_file = None
         st.rerun()
     
     st.markdown("---")

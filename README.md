@@ -9,7 +9,8 @@ An intelligent, modular health chatbot powered by Amazon Bedrock that analyzes m
   - Prescriptions
   - Lab Reports
   - Medical Images (X-rays, MRI, CT scans)
-- 🔍 **Smart Explanations**: Context-aware explanations based on document type
+- 🔍 **Robust OCR**: Amazon Textract extracts text, tables, and key-value pairs from medical documents
+- 📊 **Structured Data Extraction**: Handles complex lab reports with tables and forms
 - 💬 **Patient-Friendly**: Simple language, empathetic responses
 - 🏗️ **Modular Architecture**: Clean, maintainable code structure
 
@@ -18,6 +19,7 @@ An intelligent, modular health chatbot powered by Amazon Bedrock that analyzes m
 ```
 ├── app.py                  # Main Streamlit UI
 ├── bedrock_client.py       # AWS Bedrock API wrapper
+├── textract_extractor.py   # Amazon Textract OCR integration
 ├── document_analyzer.py    # Document categorization & analysis
 ├── chat_handler.py         # Conversational AI logic
 ├── config.py              # Configuration & constants
@@ -38,21 +40,27 @@ An intelligent, modular health chatbot powered by Amazon Bedrock that analyzes m
   - `invoke_text()`: Text-only interactions
   - `invoke_with_image()`: Image + text analysis
 
-### 3. document_analyzer.py
+### 3. textract_extractor.py
+- Amazon Textract integration for OCR
+- Methods:
+  - `extract_text()`: Basic text extraction
+  - `extract_structured_data()`: Extracts forms, tables, key-value pairs
+
+### 4. document_analyzer.py
 - Core document processing logic
 - Methods:
   - `categorize_document()`: Identifies document type
-  - `explain_prescription()`: Explains medications
-  - `explain_lab_report()`: Interprets test results
+  - `explain_prescription()`: Explains medications (uses Textract)
+  - `explain_lab_report()`: Interprets test results (uses Textract)
   - `explain_medical_image()`: Describes medical scans
   - `analyze_document()`: Complete analysis pipeline
 
-### 4. chat_handler.py
+### 5. chat_handler.py
 - Manages patient conversations
 - Maintains empathetic, helpful tone
 - Provides context-aware responses
 
-### 5. app.py
+### 6. app.py
 - Streamlit UI implementation
 - Integrates all modules
 - Manages session state and user interactions
@@ -84,7 +92,11 @@ streamlit run app.py
    - Go to AWS Console → Bedrock
    - Request model access for Claude 3 Sonnet
 
-2. **IAM Permissions**:
+2. **Enable Amazon Textract**:
+   - Textract is available by default in most regions
+   - No model access request needed
+
+3. **IAM Permissions**:
    ```json
    {
      "Version": "2012-10-17",
@@ -93,11 +105,14 @@ streamlit run app.py
          "Effect": "Allow",
          "Action": [
            "bedrock:InvokeModel",
-           "bedrock:Retrieve"
+           "bedrock:Retrieve",
+           "textract:DetectDocumentText",
+           "textract:AnalyzeDocument"
          ],
          "Resource": [
            "arn:aws:bedrock:*::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0",
-           "arn:aws:bedrock:*:*:knowledge-base/*"
+           "arn:aws:bedrock:*:*:knowledge-base/*",
+           "*"
          ]
        }
      ]

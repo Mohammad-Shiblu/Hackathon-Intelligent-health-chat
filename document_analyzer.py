@@ -1,6 +1,7 @@
 """Document analysis module for categorizing and processing medical documents."""
 
 from bedrock_client import BedrockClient
+from textract_extractor import TextractExtractor
 from config import DOCUMENT_CATEGORIES
 
 
@@ -8,8 +9,9 @@ class DocumentAnalyzer:
     """Analyzes and categorizes medical documents and images."""
     
     def __init__(self):
-        """Initialize with Bedrock client."""
+        """Initialize with Bedrock client and Textract extractor."""
         self.bedrock = BedrockClient()
+        self.textract = TextractExtractor()
     
     def categorize_document(self, image_data: bytes, media_type: str) -> dict:
         """
@@ -22,25 +24,36 @@ class DocumentAnalyzer:
         Returns:
             Dictionary with category and confidence
         """
-        prompt = """Analyze this medical document and categorize it into ONE of these types:
+        # First extract text using Textract
+        extracted_text = self.textract.extract_text(image_data)
+        
+        # Use both image and extracted text for better categorization
+        prompt = f"""Extracted text from document:
+{extracted_text[:1000]}
+
+Categorize this medical document into ONE of these types:
 1. PRESCRIPTION - Contains medication names, dosages, doctor's signature
 2. LAB_REPORT - Contains test results, lab values, pathology findings
 3. MEDICAL_IMAGE - X-ray, MRI, CT scan, ultrasound, or other diagnostic imaging
-4. UNKNOWN - Cannot determine or doesn't fit above categories
 
-Respond with ONLY the category name (PRESCRIPTION, LAB_REPORT, MEDICAL_IMAGE, or UNKNOWN)."""
+Respond with ONLY: PRESCRIPTION, LAB_REPORT, or MEDICAL_IMAGE"""
         
         system_prompt = "You are a medical document classifier. Respond only with the category name."
         
-        category = self.bedrock.invoke_with_image(
+        category = self.bedrock.invoke_text(
             prompt=prompt,
-            image_data=image_data,
-            media_type=media_type,
             system_prompt=system_prompt
-        ).strip()
+        ).strip().upper()
+        
+        # Map to lowercase for consistency
+        category_map = {
+            'PRESCRIPTION': 'prescription',
+            'LAB_REPORT': 'lab_report',
+            'MEDICAL_IMAGE': 'medical_image'
+        }
         
         return {
-            'category': category if category in DOCUMENT_CATEGORIES.values() else 'unknown',
+            'category': category_map.get(category, 'lab_report'),  # Default to lab_report if unclear
             'category_display': category
         }
     
@@ -55,7 +68,21 @@ Respond with ONLY the category name (PRESCRIPTION, LAB_REPORT, MEDICAL_IMAGE, or
         Returns:
             Detailed explanation of the prescription
         """
-        prompt = """Analyze this prescription and explain:
+        # Extract text using Textract for better accuracy
+        extracted_data = self.textract.extract_structured_data(image_data)
+        extracted_text = extracted_data['raw_text']
+        key_values = extracted_data['key_value_pairs']
+        
+        # Build context from extracted data
+        context = f"Extracted Text:\n{extracted_text}\n\n"
+        if key_values:
+            context += "Key Information:\n"
+            for key, value in key_values.items():
+                context += f"- {key}: {value}\n"
+        
+        prompt = f"""{context}
+
+Based on the extracted prescription data above, explain:
 1. Medications prescribed (names and purposes)
 2. Dosage instructions in simple terms
 3. Duration of treatment
@@ -66,10 +93,8 @@ Use simple, patient-friendly language."""
         
         system_prompt = "You are a compassionate healthcare assistant explaining prescriptions to patients."
         
-        return self.bedrock.invoke_with_image(
+        return self.bedrock.invoke_text(
             prompt=prompt,
-            image_data=image_data,
-            media_type=media_type,
             system_prompt=system_prompt
         )
     
@@ -84,7 +109,32 @@ Use simple, patient-friendly language."""
         Returns:
             Detailed explanation of lab results
         """
-        prompt = """Analyze this lab report and explain:
+        # Extract structured data using Textract
+        extracted_data = self.textract.extract_structured_data(image_data)
+        extracted_text = extracted_data['raw_text']
+        tables = extracted_data['tables']
+        key_values = extracted_data['key_value_pairs']
+        
+        # Build context from extracted data
+        context = f"Extracted Lab Report Data:\n{extracted_text}\n\n"
+        
+        if key_values:
+            context += "Patient/Test Information:\n"
+            for key, value in key_values.items():
+                context += f"- {key}: {value}\n"
+            context += "\n"
+        
+        if tables:
+            context += "Lab Test Results (Tables):\n"
+            for i, table in enumerate(tables, 1):
+                context += f"Table {i}:\n"
+                for row in table:
+                    context += " | ".join(row) + "\n"
+                context += "\n"
+        
+        prompt = f"""{context}
+
+Based on the extracted lab report data above, explain:
 1. What tests were performed
 2. Key findings and values
 3. Which values are normal vs abnormal
@@ -95,10 +145,8 @@ Use simple language that patients can understand."""
         
         system_prompt = "You are a healthcare assistant explaining lab results to patients in simple terms."
         
-        return self.bedrock.invoke_with_image(
+        return self.bedrock.invoke_text(
             prompt=prompt,
-            image_data=image_data,
-            media_type=media_type,
             system_prompt=system_prompt
         )
     
@@ -147,14 +195,24 @@ Use simple, reassuring language."""
         category = categorization['category']
         
         # Step 2: Generate appropriate explanation based on category
-        if category == 'prescription':
-            explanation = self.explain_prescription(image_data, media_type)
-        elif category == 'lab_report':
-            explanation = self.explain_lab_report(image_data, media_type)
-        elif category == 'medical_image':
-            explanation = self.explain_medical_image(image_data, media_type)
-        else:
-            explanation = "I couldn't clearly identify this document type. Please upload a clear image of a prescription, lab report, or medical scan."
+        try:
+            if category == 'prescription':
+                explanation = self.explain_prescription(image_data, media_type)
+            elif category == 'lab_report':
+                explanation = self.explain_lab_report(image_data, media_type)
+            elif category == 'medical_image':
+                explanation = self.explain_medical_image(image_data, media_type)
+            else:
+                # Fallback: try lab report analysis
+                explanation = self.explain_lab_report(image_data, media_type)
+        except Exception as e:
+            # If Textract or analysis fails, use vision model as fallback
+            explanation = self.bedrock.invoke_with_image(
+                prompt="Analyze this medical document and explain all visible information in simple, patient-friendly terms.",
+                image_data=image_data,
+                media_type=media_type,
+                system_prompt="You are a healthcare assistant explaining medical documents to patients."
+            )
         
         return {
             'category': category,
