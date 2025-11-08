@@ -88,7 +88,13 @@ class AWSService:
         for doc in docs:
             context += f"- {doc['file_name']}: {doc.get('extracted_text', '')[:200]}\n"
         
-        prompt = f"You are a health assistant. Patient asks: {message}{context}\n\nProvide clear, empathetic response."
+        prompt = f"""You are a health assistant. When comparing lab results or medical data, format comparisons as HTML tables. Use this exact format with NO extra newlines before or after the table:
+
+<table><tr><th>Test</th><th>Date 1</th><th>Date 2</th></tr><tr><td>Hemoglobin</td><td>12.9</td><td>12.4</td></tr></table>
+
+Patient asks: {message}{context}
+
+Provide clear, empathetic response. Put tables directly after text with no blank lines."""
         
         try:
             response = self.bedrock.invoke_model(

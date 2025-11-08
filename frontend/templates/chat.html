@@ -135,7 +135,22 @@
             
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role}-message`;
-            messageDiv.innerHTML = `<div class="message-content">${content.replace(/\n/g, '<br>')}</div>`;
+            
+            // Render HTML for assistant, escape for user
+            if (role === 'assistant') {
+                // Aggressively clean whitespace and strip table inline styles
+                const processed = content
+                    .trim()
+                    .replace(/<table[^>]*>/g, '<table>')  // Remove inline styles from table
+                    .replace(/\s*\n\s*\n\s*<table>/g, '<br><br><table>')  // Max 2 breaks before table
+                    .replace(/<\/table>\s*\n\s*\n\s*/g, '</table><br><br>')  // Max 2 breaks after table
+                    .replace(/\n/g, '<br>')  // Convert remaining newlines
+                    .replace(/(<br>\s*){3,}/g, '<br><br>');  // Limit consecutive breaks
+                messageDiv.innerHTML = `<div class="message-content">${processed}</div>`;
+            } else {
+                messageDiv.innerHTML = `<div class="message-content">${content.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</div>`;
+            }
+            
             messages.appendChild(messageDiv);
             messages.scrollTop = messages.scrollHeight;
         }

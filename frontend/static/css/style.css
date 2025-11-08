@@ -199,6 +199,14 @@ body {
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
+.message-content table {
+    margin: 10px 0;
+}
+
+.message-content br + table {
+    margin-top: 10px;
+}
+
 .chat-input-container {
     display: flex;
     padding: 1.5rem;
@@ -240,4 +248,22 @@ body {
 
 .send-btn:hover {
     opacity: 0.9;
+}
+
+.message-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 10px 0;
+}
+
+.message-content table th,
+.message-content table td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+
+.message-content table th {
+    background: #f0f0f0;
+    font-weight: 600;
 }
